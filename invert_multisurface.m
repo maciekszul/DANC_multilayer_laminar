@@ -1,6 +1,6 @@
-function out_file=invert_multisurface(dataset_path, output_path, subj_id, session_id, run_id, conv_mat_file, mu_file, it_file, res_file, json_out_file, an_name, layers, epo)
+function out_file=invert_multisurface(dataset_path, mat_file, subj_id, session_id, run_id, epo)
 
-addpath('/home/bonaiuto/spm12')
+addpath('/home/mszul/git/DANC_spm12/spm12')
 spm('defaults','eeg');
 spm_jobman('initcfg');
 
@@ -17,7 +17,7 @@ rpa=subj_info.rpa(s_idx,:);
 
 % Where to put output data
 data_dir=fullfile(dataset_path,'derivatives/processed',subj_id, session_id);
-output_dir=output_path;
+output_dir=fullfile(data_dir, 'inverse');
 if exist(output_dir,'dir')~=7
     mkdir(output_dir);
 end
@@ -25,7 +25,8 @@ subj_fs_dir=fullfile(dataset_path,'derivatives/processed',subj_id,'fs');
 subj_surf_dir=fullfile(subj_fs_dir,'surf');
 
 % Data file to load
-data_file=conv_mat_file
+%data_file=fullfile(output_dir, sprintf('fmspm_converted_autoreject-%s-%s-%s-%s-epo.mat', subj_id, session_id, run_id, epo));
+data_file=mat_file
 
 mri_fname=fullfile(dataset_path,'raw', subj_id, 'mri', 'headcast/t1w.nii');
     
@@ -37,17 +38,16 @@ invert_multisurface_results.epo=epo;
 invert_multisurface_results.patch_size=patch_size;
 invert_multisurface_results.n_temp_modes=n_temp_modes;
 
-% surf_fname=fullfile(subj_surf_dir,'multilayer.ds.link_vector.nodeep.gii');
-surf_fname=fullfile(subj_surf_dir,sprintf('%s.ds.link_vector.nodeep.gii', an_name));
+surf_fname=fullfile(subj_surf_dir,'multilayer.ds.link_vector.nodeep.gii');
+
 invert_multisurface_results.surf_fname=surf_fname;
     
 % Create smoothed meshes
-[smoothkern]=spm_eeg_smoothmesh_multilayer_mm(surf_fname, patch_size, layers);
+[smoothkern]=spm_eeg_smoothmesh_multilayer_mm(surf_fname, patch_size, 11);
 
 % Coregistered filename
 [path,base,ext]=fileparts(data_file);
-%coreg_fname=fullfile(output_dir, sprintf('%s.mat', base));
-coreg_fname=fullfile(output_dir, sprintf('%s_%s.mat', an_name, base));
+coreg_fname=fullfile(output_dir, sprintf('multilayer_%s.mat',base));
  
 res_woi=[-Inf Inf];
 if strcmp(epo,'motor')
@@ -60,26 +60,26 @@ out_file=invert_ebb(data_file, coreg_fname, mri_fname, surf_fname,...
 invert_multisurface_results.res_surf_fname=out_file;
 
 % Load mesh results
-mesh_results=gifti(out_file);
+%mesh_results=gifti(out_file);
 D=spm_eeg_load(coreg_fname);
 M=D.inv{1}.inverse.M;
 U=D.inv{1}.inverse.U{1};
 MU=M*U;
 It   = D.inv{1}.inverse.It;
 
-mu_fname=mu_file
+mu_fname=fullfile(output_dir, sprintf('multilayer_MU_%s.tsv',base));
 dlmwrite(mu_fname, MU, '\t');
 invert_multisurface_results.mu_fname=mu_fname;
 
-it_fname=it_file
+it_fname=fullfile(output_dir, sprintf('multilayer_It_%s.tsv',base));
 dlmwrite(it_fname, It, '\t');
 invert_multisurface_results.it_fname=it_fname;
 
-res_fname=res_file
-dlmwrite(res_fname, mesh_results.cdata(:), '\t');
+res_fname=fullfile(output_dir, sprintf('multilayer_res_%s.tsv',base));
+%dlmwrite(res_fname, mesh_results.cdata(:), '\t');
 invert_multisurface_results.res_fname=res_fname;
     
-out_file=json_out_file
+out_file=fullfile(output_dir, sprintf('invert_%s_multilayer_results.json',base));
 
 fid = fopen(out_file,'w');
 fwrite(fid, jsonencode(invert_multisurface_results)); 
