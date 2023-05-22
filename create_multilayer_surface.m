@@ -1,44 +1,42 @@
-function create_multilayer_surface(subj_id, mri_path, surf_path, varargin)
+function create_multilayer_surface(subject_dir, layers_n, output_dir, name_prefix, singularity_path, mount_dir, varargin)
 
-% Parse inputs
-defaults = struct("layers_n", 11);  %define default values
-params = struct(varargin{:});
-for f = fieldnames(defaults)',
-    if ~isfield(params, f{1}),
-        params.(f{1}) = defaults.(f{1});
-    end
-end
+addpath('/home/mszul/git/DANC_spm12/spm12');
+addpath('/home/mszul/git/MEGsurfer');
 
 hemispheres={'lh','rh'};
 
-layers = linspace(0,1, params.layers_n)
-layers = layers(2:end-1)
+output_name = strcat(name_prefix, '.ds.gii');
+layers = linspace(0, 1, layers_n);
+layers = layers(2:end-1);
 
-ext_name = strcat("multilayer-", num2str(params.layers_n), ".ds.gii")
-  
-for l=1:length(layers)
+
+parpool(length(layers))
+
+parfor l=1:length(layers)
     layer=layers(l);
     for h=1:length(hemispheres)
         hemi=hemispheres{h};
-        wm_file=fullfile(surf_path, sprintf('%s.white',hemi));
-        out_file=fullfile(surf_path, sprintf('%s.%.1f',hemi,layer));
-        [status, out]=system(['mris_expand -thickness ' wm_file ' ' sprintf('%.1f',layer) ' ' out_file]);        
+        wm_file=fullfile(subject_dir, 'surf', sprintf('%s.white',hemi));
+        out_file=fullfile(output_dir, sprintf('%s.%.1f',hemi,layer));
+        % [status, out]=system(sprintf('singularity exec -B %s %s mris_expand -thickness %s %d %s', mount_dir, singularity_path, wm_file, layer, out_file))
     end
 end
 
+
 % Read RAS offset from freesurfer volume
-[status, out]=system(['mri_info --cras ' fullfile(mri_path, 'orig.mgz')]);
-cols=strsplit(out,' ');
-ras_offset=[str2num(cols{1}) str2num(cols{2}) str2num(cols{3})]
+ras_off_file =fullfile(subject_dir, 'mri', 'orig.mgz');
+[status, out]=system(sprintf('singularity exec -B %s %s mri_info --cras %s', mount_dir, singularity_path, ras_off_file));
+cols=strsplit(out,' ')
+ras_offset=[str2num(cols{1}) str2num(cols{2}) str2num(cols{3})];
 
 % Convert freesurfer surface files to gifti
 for l=1:length(layers)
     layer=layers(l);
     for h_idx=1:length(hemispheres)    
         hemi=hemispheres{h_idx};
-        orig_name=fullfile(surf_path, sprintf('%s.%.1f', hemi, layer));
-        new_name=fullfile(surf_path, sprintf('%s.%.1f.gii', hemi, layer));
-        system(sprintf('mris_convert %s %s', orig_name, new_name));
+        orig_name=fullfile(output_dir, sprintf('%s.%.1f', hemi, layer));
+        new_name=fullfile(output_dir, sprintf('%s.%.1f.gii', hemi, layer));
+        system(sprintf('singularity exec -B %s %s mris_convert %s %s', mount_dir, singularity_path, orig_name, new_name));
    
         % Read in each hemisphere's gifti file and adjust for RAS offset
         g=gifti(new_name);
@@ -51,27 +49,27 @@ for l=1:length(layers)
     end
     
     % combine hemispheres
-    disp(layer)
-    lh=fullfile(surf_path,bu sprintf('lh.%.1f.gii', layer));
-    rh=fullfile(surf_path, sprintf('rh.%.1f.gii', layer));
-    combined=fullfile(surf_path, sprintf('%.1f.gii', layer));
+    lh=fullfile(output_dir, sprintf('lh.%.1f.gii', layer));
+    rh=fullfile(output_dir, sprintf('rh.%.1f.gii', layer));
+    combined=fullfile(output_dir, sprintf('%.1f.gii', layer));
     combine_surfaces({lh, rh}, combined);
 end
 
 % downsample
-in_surfs={fullfile(surf_path, 'white.gii')};
-out_surfs={fullfile(surf_path, 'white.ds.gii')};
+in_surfs={fullfile(subject_dir, 'surf', 'white.gii')};
+out_surfs={fullfile(output_dir, 'white.ds.gii')};
 for l=1:length(layers)
     layer=layers(l);
-    in_surfs{end+1}=fullfile(surf_path, sprintf('%.1f.gii', layer));
-    out_surfs{end+1}=fullfile(surf_path, sprintf('%.1f.ds.gii', layer));
+    in_surfs{end+1}=fullfile(output_dir, sprintf('%.1f.gii', layer));
+    out_surfs{end+1}=fullfile(output_dir, sprintf('%.1f.ds.gii', layer));
 end
-in_surfs{end+1}=fullfile(surf_path, 'pial.gii');
-out_surfs{end+1}=fullfile(surf_path, 'pial.ds.gii');
+
+in_surfs{end+1}=fullfile(subject_dir, 'surf', 'pial.gii');
+out_surfs{end+1}=fullfile(output_dir, 'pial.ds.gii');
+
 decimate_multiple_surfaces(in_surfs, out_surfs, 0.1);
 
-combined=fullfile(surf_path, ext_name);
+combined_name=fullfile(output_dir, output_name);
 % reverse order so surface order matches electrode order in laminar recordings
 out_surfs(end:-1:1) = out_surfs(:);
-combine_surfaces(out_surfs, combined);
-
+combine_surfaces(out_surfs, combined_name);
