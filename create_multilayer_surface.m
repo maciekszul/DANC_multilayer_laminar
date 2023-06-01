@@ -18,7 +18,7 @@ parfor l=1:length(layers)
         hemi=hemispheres{h};
         wm_file=fullfile(subject_dir, 'surf', sprintf('%s.white',hemi));
         out_file=fullfile(output_dir, sprintf('%s.%.1f',hemi,layer));
-        % [status, out]=system(sprintf('singularity exec -B %s %s mris_expand -thickness %s %d %s', mount_dir, singularity_path, wm_file, layer, out_file))
+        [status, out]=system(sprintf('singularity exec -B %s %s mris_expand -thickness %s %d %s', mount_dir, singularity_path, wm_file, layer, out_file))
     end
 end
 

@@ -1,4 +1,4 @@
-function out_file=invert_multisurface(output_dir, participants_tsv, mat_file, t1_file, link_vector, mu_file, it_file, res_file, json_out_file, layers, sub, ses, run, epo)
+function out_file=invert_multisurface(output_dir, participants_tsv, mat_file, t1_file, link_vector, mu_file, it_file, res_file, json_out_file, og_filename, layers, sub, ses, run, epo)
 
 addpath('/home/mszul/git/DANC_spm12/spm12')
 spm('defaults','eeg');
@@ -29,14 +29,18 @@ invert_multisurface_results.n_temp_modes=n_temp_modes;
 
 surf_fname=link_vector;
 
+
+
 invert_multisurface_results.surf_fname=surf_fname;
     
 % Create smoothed meshes
 [smoothkern]=spm_eeg_smoothmesh_multilayer_mm(surf_fname, patch_size, layers);
 
+layers=string(layers)
+
 % Coregistered filename
 [path,base,ext]=fileparts(data_file);
-coreg_fname=fullfile(output_dir, sprintf('multilayer_%s.mat', layers));
+coreg_fname=fullfile(output_dir, sprintf('multilayer_%s.mat', og_filename));
  
 res_woi=[-Inf Inf];
 if strcmp(epo,'motor')
