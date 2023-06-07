@@ -1,6 +1,12 @@
 import numpy as np
 import nibabel as nib
 from sklearn import neighbors
+from scipy.ndimage import gaussian_filter
+from fooof import FOOOF
+from fooof.sim.gen import gen_aperiodic
+from joblib import Parallel, delayed
+from scipy.interpolate import interp1d
+from scipy.signal import savgol_filter
 
 
 def check_maj(list_to_check):
@@ -130,3 +136,113 @@ def fsavg_vals_to_native(values, fsavg_sphere_paths, fsnat_sphere_paths, pial_pa
     fsnat_ds_vx_values = fsnat_ds_vx_values[indices]
     
     return fsnat_ds_vx_values.flatten()
+
+def compute_csd(surf_tcs, times, mean_dist, n_surfs):
+    # Compute CSD
+    nd = 1
+    spacing = mean_dist*10**-3
+
+    csd=np.zeros((n_surfs, surf_tcs.shape[1]))
+    for t in range(surf_tcs.shape[1]):
+        phi=surf_tcs[:,t]
+        csd[0,t]=surf_tcs[0,t]
+        csd[1,t]=surf_tcs[1,t]
+        for z in range(2,n_surfs-3):
+            csd[z,t]=(phi[z+2]-2*phi[z]+phi[z-2])/((nd*spacing)**2)
+        csd[-2,t]=surf_tcs[-2,t]
+        csd[-1,t]=surf_tcs[-1,t]            
+    
+    return csd
+
+
+def smooth_csd(csd, n_surfs):
+    # interpolate CSD in space
+    y = np.linspace(0,n_surfs-1,n_surfs)
+    Yi=np.linspace(0,n_surfs-1,500)
+    
+    f=interp1d(y,csd,kind='cubic',axis=0)
+    csd_smooth=f(Yi)
+    
+    csd_smooth=savgol_filter(csd_smooth, 51, 3, axis=1)
+    
+    return csd_smooth
+
+
+def compute_rel_power(power, freqs):
+    power = gaussian_filter(power, sigma=[1.5, 2])
+
+    if np.min(power[:]) < 0:
+        power = power - np.min(power[:])
+    rel_power = np.zeros(power.shape)
+    for freq in range(len(freqs)):
+        rel_power[:, freq] = (power[:, freq] - np.min(power[:, freq])) / (
+                    np.max(power[:, freq]) - np.min(power[:, freq]))
+
+    return rel_power
+
+
+def get_crossover(freqs,rel_per_power,rel_aper_power):
+    n_chans=rel_per_power.shape[0]
+    ab_idx = np.where((freqs >= 7) & (freqs <= 30))[0]
+    g_idx = np.where((freqs >= 50) & (freqs <= 125))[0]
+    ab_rel_pow = np.mean(rel_per_power[:, ab_idx], axis=1)
+    g_rel_pow = np.mean(rel_aper_power[:, g_idx], axis=1)
+    crossovers = detect_crossing_points(ab_rel_pow, g_rel_pow)
+    assert(len(crossovers)<=2)
+    if len(crossovers) > 1:
+        dist1 = np.min([crossovers[0], n_chans - crossovers[0]])
+        dist2 = np.min([crossovers[1], n_chans - crossovers[1]])
+        if dist1 > dist2:
+            crossover = crossovers[0]
+        else:
+            crossover = crossovers[1]
+    else:
+        crossover = crossovers[0]
+    return crossover
+
+
+def detect_crossing_points(ab_rel_pow, g_rel_pow):
+    crossing_points = []
+
+    # Iterate through the series
+    for i in range(1, len(ab_rel_pow)):
+        # Check if the series cross each other
+        if (ab_rel_pow[i] > g_rel_pow[i] and ab_rel_pow[i - 1] < g_rel_pow[i - 1]) or \
+                (ab_rel_pow[i] < g_rel_pow[i] and ab_rel_pow[i - 1] > g_rel_pow[i - 1]):
+            crossing_points.append(i)
+
+    return crossing_points
+
+
+def all_layers_ROI_map(layer_len, n_surf, ROI_indexes):
+    return np.array([i[ROI_indexes] for i in np.split(np.arange(layer_len*n_surf), n_surf)]).flatten()
+
+
+def fooofinator_par(freqs, psd, f_lims, n_jobs=-1):
+    start_params=np.arange(f_lims[0],f_lims[1]-5,1)
+    
+    def run_fooof(i):
+        start=start_params[i]
+        fg=FOOOF(aperiodic_mode='fixed')
+        fg.fit(freqs,psd, [start,f_lims[1]])
+        if fg.has_model:
+            ap_params=fg.get_params('aperiodic_params')
+            return gen_aperiodic(freqs, ap_params)
+        else:
+            return np.zeros(psd.shape)*np.nan
+    aperiodic = Parallel(
+        n_jobs=n_jobs
+    )(delayed(run_fooof)(i) for i in range(len(start_params)))
+    return np.nanmedian(np.array(aperiodic),axis=0)
+
+
+def fooofinator(freqs, psd, f_lims):
+    start_params=np.arange(f_lims[0],f_lims[1]-5,1)
+    test_aperiodic=[]
+    for i,start in enumerate(start_params):
+        fg=FOOOF(aperiodic_mode='fixed')
+        fg.fit(freqs,psd, [start,f_lims[1]])
+        if fg.has_model:
+            ap_params=fg.get_params('aperiodic_params')
+            test_aperiodic.append(gen_aperiodic(freqs, ap_params))
+    return np.median(np.array(test_aperiodic),axis=0)
