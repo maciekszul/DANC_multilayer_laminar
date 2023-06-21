@@ -7,6 +7,8 @@ from fooof.sim.gen import gen_aperiodic
 from joblib import Parallel, delayed
 from scipy.interpolate import interp1d
 from scipy.signal import savgol_filter
+import warnings
+warnings.filterwarnings("ignore")
 
 
 def check_maj(list_to_check):

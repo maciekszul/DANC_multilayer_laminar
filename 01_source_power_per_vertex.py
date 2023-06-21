@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 from os import sep
 import new_files
+# from fooofinator import FOOOFinator, FOOOFinatorGroup
+import fooofats as fat
 from utilities import files
 from scipy.spatial.distance import euclidean
 from mne.time_frequency import psd_array_welch
@@ -146,68 +148,53 @@ fif = read_epochs(fif, verbose=False)
 fif = fif.pick_types(meg=True, ref_meg=False, misc=False)
 sfreq = fif.info["sfreq"]
 fif = fif.get_data()
-MU = pd.read_csv(MU, sep="\t", header=None).to_numpy()
+new_mu_path = MU.split(".")[0] + ".npy"
+if not op.exists(new_mu_path):
+    MU = pd.read_csv(MU, sep="\t", header=None).to_numpy()
+    np.save(new_mu_path, MU)
+elif op.exists(new_mu_path):
+    MU = np.load(new_mu_path)
 
-source = []
-for trial in fif:
-    trial_source = np.dot(trial.T, MU.T).T
-    trial_source = np.split(trial_source, info["n_surf"], axis=0)
-    trial_source = np.array(trial_source) # layer x vertex x time
-    source.append(trial_source)
-source = np.array(source) # trial x layer x vertex x time
-
-vx_r = range(source.shape[2])
-psd_per_layer = []
-periodic_per_layer = []
-aperiodic_per_layer = []
 flims = [0.1,125]
-for surf in tqdm(range(info["n_surf"])):
-    winsize = int(sfreq)
-    overlap = int(winsize/2)   
-    psd,freqs = psd_array_welch(
-        source[:, surf, :, :], sfreq,
-        fmin=flims[0], fmax=flims[1], n_fft=2000,
-        n_overlap=overlap, n_per_seg=winsize, 
-        window="hann", verbose=False         
-    )
-    mean_psd = np.nanmean(psd,axis=0)
-    aperiodic = np.vstack([fooofinator_par(freqs, i, flims, n_jobs=-1) for i in mean_psd])
-    mean_psd = np.log10(mean_psd)
-    psd_per_layer.append(mean_psd)
-    periodic = mean_psd - aperiodic
-    periodic_per_layer.append(periodic)
-    aperiodic_per_layer.append(aperiodic)
+
+psd_mean = []
+periodic = []
+aperiodic = []
+with tqdm(total=MU.shape[0], position=0, leave=True) as pbar:
+    for vertex in tqdm(range(MU.shape[0]), position=0, leave=True):
+        vertex_source = []
+        for trial in fif:
+             vertex_source.append(np.dot(trial.T, MU[vertex]))
+        vertex_source = np.array(vertex_source)
+        winsize = int(sfreq)
+        overlap = int(winsize/2)
+        psd, freqs = psd_array_welch(
+            vertex_source, sfreq, fmin=flims[0], 
+            fmax=flims[1], n_fft=2000, 
+            n_overlap=overlap, n_per_seg=winsize,
+            window="hann", verbose=False, n_jobs=1
+        )
+        mean_psd = np.nanmean(psd,axis=0)
+#         ff = FOOOFinator(verbose=False)
+#         ff.fit(freqs, mean_psd, [0.1, 125], n_jobs=-1)
+        ap = fat.return_just_ap(freqs, mean_psd)
+        mean_psd = np.log10(mean_psd)
+        psd_mean.append(mean_psd)
+        aperiodic.append(ap)
+        periodic.append(mean_psd - ap)
+        pbar.update()
 
 
-psd_per_layer = np.array(psd_per_layer) # layer x vertex x freqs
-periodic_per_layer = np.array(periodic_per_layer) # layer x vertex x freqs
-aperiodic_per_layer = np.array(aperiodic_per_layer) # layer x vertex x freqs
-psd_rel_power = np.stack([compute_rel_power(psd_per_layer[:,i,:], freqs) for i in vx_r], axis=1)
-periodic_rel_power = np.stack([compute_rel_power(periodic_per_layer[:,i,:], freqs) for i in vx_r], axis=1)
-aperiodic_rel_power = np.stack([compute_rel_power(aperiodic_per_layer[:,i,:], freqs) for i in vx_r], axis=1)
-
-crossover = []
-for i in vx_r:
-    try:
-        c = get_crossover(freqs, periodic_rel_power[:,i,:], aperiodic_rel_power[:,i,:])
-    except:
-        c = np.nan
-    crossover.append(c)
-crossover = np.array(crossover)
-
-# saving the output
 psd_path = op.join(subject_inv_path, "power_PSD_" + core_name + ".npy")
-np.save(psd_path, psd_per_layer)
+np.save(psd_path, np.array(psd_mean))
 periodic_path = op.join(subject_inv_path, "power_periodic_" + core_name + ".npy")
-np.save(periodic_path, periodic_per_layer)
+np.save(periodic_path, np.array(periodic))
 aperiodic_path = op.join(subject_inv_path, "power_aperiodic_" + core_name + ".npy")
-np.save(aperiodic_path, aperiodic_per_layer)
-rel_psd_path = op.join(subject_inv_path, "rel_power_PSD_" + core_name + ".npy")
-np.save(rel_psd_path, psd_rel_power)
-rel_periodic_path = op.join(subject_inv_path, "rel_power_periodic_" + core_name + ".npy")
-np.save(rel_periodic_path, periodic_rel_power)
-rel_aperiodic_path = op.join(subject_inv_path, "rel_power_aperiodic_" + core_name + ".npy")
-np.save(rel_aperiodic_path, aperiodic_rel_power)
+np.save(aperiodic_path, np.array(aperiodic))
+
+info_path = op.join(subject_proc_path, "info.json")
+with open(info_path, "w") as fp:
+    json.dump(info, fp, indent=4)
 
 stop = time.monotonic()
 duration = int((stop - start)/60.0)
