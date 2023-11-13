@@ -2,6 +2,7 @@
     "dataset_dir": "/home/common/bonaiuto/multiburst/derivatives/processed",
     "which_dataset": "multilayer_11",
     "anatomy_dir": "/home/common/bonaiuto/cued_action_meg/derivatives/processed",
+    "old_dataset": "/home/common/bonaiuto/cued_action_meg",
     "annot_paths": [
         "/home/mszul/git/DANC_multilayer_laminar/assets/lh.HCPMMP1.annot",
         "/home/mszul/git/DANC_multilayer_laminar/assets/rh.HCPMMP1.annot"
@@ -13,5 +14,7 @@
     "atlas": "/home/mszul/git/DANC_multilayer_laminar/assets/atlas_glasser_2016.csv",
     "subject_info": "/home/common/bonaiuto/multiburst/participants.tsv",
     "freesurfer_singularity": "/scratch/freesurfer_lic.sif",
-    "big_brain_path": "/home/mszul/git/DANC_multilayer_laminar/assets/big_brain_layer_thickness"
+    "big_brain_path": "/home/mszul/git/DANC_multilayer_laminar/assets/big_brain_layer_thickness",
+    "layers": 11,
+    "T1_dir": "/home/common/bonaiuto/cued_action_meg/raw/{}/mri/headcast/t1w.nii"
 }

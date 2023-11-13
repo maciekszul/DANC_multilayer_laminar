@@ -1,3 +1,4 @@
+import json
 import numpy as np
 import nibabel as nib
 from sklearn import neighbors
@@ -11,16 +12,6 @@ from scipy.interpolate import interp1d
 from scipy.signal import savgol_filter
 import warnings
 warnings.filterwarnings("ignore")
-
-
-def check_maj(list_to_check):
-    list_len = len(list_to_check)
-    majority = list_len//2 + 1
-    if len(set(list_to_check[:majority])) == 1:
-        return list_to_check[0]
-    else:
-        item, count = np.unique(list_to_check, return_counts=True)
-        return item[np.argmax(count)]
 
 
 def transform_atlas(paths_annot, paths_fsavg_sphere, paths_fsnat_sphere, pial_path, pial_ds_path, pial_nodeep_path, return_dict=False):
@@ -141,6 +132,7 @@ def fsavg_vals_to_native(values, fsavg_sphere_paths, fsnat_sphere_paths, pial_pa
     
     return fsnat_ds_vx_values.flatten()
 
+
 def compute_csd(surf_tcs, times, mean_dist, n_surfs):
     # Compute CSD
     nd = 1
@@ -172,56 +164,6 @@ def smooth_csd(csd, n_surfs):
     return csd_smooth
 
 
-def compute_rel_power(power, freqs):
-    power = gaussian_filter(power, sigma=[1.5, 2], order=0)
-
-    if np.min(power[:]) < 0:
-        power = power - np.min(power[:])
-    rel_power = np.zeros(power.shape)
-    for freq in range(len(freqs)):
-        rel_power[:, freq] = (power[:, freq] - np.min(power[:, freq])) / (
-                    np.max(power[:, freq]) - np.min(power[:, freq]))
-
-    return rel_power
-
-
-def get_crossover(freqs,rel_per_power,rel_aper_power):
-    n_chans=rel_per_power.shape[0]
-    ab_idx = np.where((freqs >= 7) & (freqs <= 30))[0]
-    g_idx = np.where((freqs >= 50) & (freqs <= 125))[0]
-    ab_rel_pow = np.mean(rel_per_power[:, ab_idx], axis=1)
-    g_rel_pow = np.mean(rel_aper_power[:, g_idx], axis=1)
-    crossovers = detect_crossing_points(ab_rel_pow, g_rel_pow)
-    assert(len(crossovers)<=2)
-    if len(crossovers) > 1:
-        dist1 = np.min([crossovers[0], n_chans - crossovers[0]])
-        dist2 = np.min([crossovers[1], n_chans - crossovers[1]])
-        if dist1 > dist2:
-            crossover = crossovers[0]
-        else:
-            crossover = crossovers[1]
-    else:
-        crossover = crossovers[0]
-    return crossover
-
-
-def detect_crossing_points(ab_rel_pow, g_rel_pow):
-    crossing_points = []
-
-    # Iterate through the series
-    for i in range(1, len(ab_rel_pow)):
-        # Check if the series cross each other
-        if (ab_rel_pow[i] > g_rel_pow[i] and ab_rel_pow[i - 1] < g_rel_pow[i - 1]) or \
-                (ab_rel_pow[i] < g_rel_pow[i] and ab_rel_pow[i - 1] > g_rel_pow[i - 1]):
-            crossing_points.append(i)
-
-    return crossing_points
-
-
-def all_layers_ROI_map(layer_len, n_surf, ROI_indexes):
-    return np.array([i[ROI_indexes] for i in np.split(np.arange(layer_len*n_surf), n_surf)]).flatten()
-
-
 def data_to_rgb(data, n_bins, cmap, vmin, vmax, vcenter=0, ret_map=False, norm="TS"):
     if norm == "TS":
         divnorm = colors.TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
@@ -241,3 +183,25 @@ def data_to_rgb(data, n_bins, cmap, vmin, vmax, vcenter=0, ret_map=False, norm="
         return colour_mapped
     elif ret_map:
         return colour_mapped, c
+
+
+def all_layers_ROI_map(layer_len, n_surf, ROI_indexes):
+    return np.array([i[ROI_indexes] for i in np.split(np.arange(layer_len*n_surf), n_surf)]).flatten()
+
+
+def many_is_in(multiple, target):
+    check_ = []
+    for i in multiple:
+        check_.append(i in target)
+    return any(check_)
+
+def all_is_in(multiple, target):
+    check_ = []
+    for i in multiple:
+        check_.append(i in target)
+    return all(check_)
+
+def cat(options, target):
+    for i in options:
+        if i in target:
+            return i

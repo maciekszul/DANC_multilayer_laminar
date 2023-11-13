@@ -83,7 +83,7 @@ info["MU_paths"] = all_MU_files
 ## atlas + thicc map preps/loads
 # atlas
 if not all([op.exists(info["atlas_labels_path"]), op.exists(info["atlas_colors_path"])]):
-    atlas_labels, atlas_colors = transform_atlas(
+    atlas_colors, atlas_labels = transform_atlas(
         info["annot_paths"], info["fsavg_sphere_paths"],
         info["fsnat_sphere_paths"], info["pial"], 
         info["pial_ds"], info["pial_ds_nodeep"]
@@ -124,10 +124,10 @@ if not op.exists(info["big_brain_layers_path"]):
     ) for i in fsavg_values.keys()}
     overall_thickness = np.sum(np.vstack([fsnat_ds_values[i] for i in fsnat_ds_values.keys()]), axis=0)
     bb_bound_prop = {i: np.divide(
-        layers_fsnative_ds_values[i], 
+        fsnat_ds_values[i], 
         overall_thickness, 
         where=overall_thickness != 0
-    ) for i in layers_fsnat_ds_values.keys()}
+    ) for i in fsnat_ds_values.keys()}
     bb_bound_prop = {i: list(bb_bound_prop[i].astype(float)) for i in bb_bound_prop.keys()}
     with open(info["big_brain_layers_path"], "w") as fp:
         json.dump(bb_bound_prop, fp, indent=4)
@@ -179,11 +179,13 @@ for vertex in tqdm(range(layer_shape), position=0, leave=False, ascii=' >='):
     csd = compute_csd(
         vertex_source,fif_times, vertex_layer_distance, info["n_surf"]
     )
+#     csd = np.gradient(vertex_source, axis=1)
     CSD.append(csd)
 #     csd_smooth = smooth_csd(csd, info["n_surf"])
 #     CSD_SMOOTH.append(csd_smooth)
         
 
+# csd_path = op.join(subject_inv_path, "time_gradient_CSD_" + core_name + ".npy")
 csd_path = op.join(subject_inv_path, "time_CSD_" + core_name + ".npy")
 np.save(csd_path, np.array(CSD))
 # csd_smooth_path = op.join(subject_inv_path, "time_CSD_SMOOTH_" + core_name + ".npy")
